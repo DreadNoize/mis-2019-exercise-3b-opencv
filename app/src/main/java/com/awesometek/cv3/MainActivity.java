@@ -1,32 +1,24 @@
 package com.awesometek.cv3;
 
-import android.annotation.SuppressLint;
-import android.content.Context;
 import android.content.pm.PackageManager;
-import android.location.Location;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
-import android.widget.FrameLayout;
 import android.widget.Toast;
 
 import org.opencv.android.BaseLoaderCallback;
 import org.opencv.android.CameraBridgeViewBase;
 import org.opencv.android.LoaderCallbackInterface;
 import org.opencv.android.OpenCVLoader;
-import org.opencv.core.Core;
-import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfRect;
 import org.opencv.core.Scalar;
-import org.opencv.core.Size;
 import org.opencv.core.Rect;
 import org.opencv.core.Point;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.objdetect.CascadeClassifier;
-import org.opencv.osgi.OpenCVNativeLoader;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -46,7 +38,6 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
     private CameraBridgeViewBase cameraView;
     private Boolean cameraPermissionGranted = false;
-    private Mat rgbaOutput = new Mat(0, 0, CvType.CV_8UC4);
     private CascadeClassifier faceClassifier;
 
     // currently not in use - left for showcasing purposes
@@ -68,6 +59,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        // haarcascade from https://github.com/opencv/opencv/tree/3.4.1/data/haarcascades
         String cascadeFile = initAssetFile("haarcascade_frontalface_default.xml");
         faceClassifier = new CascadeClassifier(cascadeFile);
         if (faceClassifier.empty()) {
@@ -91,6 +83,28 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         createCameraView();
     }
 
+    @Override
+    protected void onPause() {
+        Log.i(TAG, "paused app");
+        super.onPause();
+        if(cameraView != null) {
+            cameraView.disableView();
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        Log.i(TAG, "resumed app");
+        super.onResume();
+        if(cameraView != null) {
+            cameraView.enableView();
+        } else {
+            createCameraView();
+        }
+    }
+
+
+
     private void createCameraView() {
         if(!cameraPermissionGranted) {
             requestCameraPermission();
@@ -103,7 +117,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         cameraView.enableView();
     }
 
-    // location permission adapted from
+    // permission adapted from
     // https://github.com/googlemaps/android-samples/blob/master/tutorials/
     // CurrentPlaceDetailsOnMap/app/src/main/java/com/example/
     // currentplacedetailsonmap/MapsActivityCurrentPlace.java
@@ -143,27 +157,20 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
     @Override
     public Mat onCameraFrame(CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
-    /*    Mat col  = inputFrame.rgba();
-        Rect foo = new Rect(new Point(100,100), new Point(200,200));
-        Imgproc.rectangle(col, foo.tl(), foo.br(), new Scalar(0, 0, 255), 3);
-        return col;
-    */
         Mat gray = inputFrame.gray();
         Mat col  = inputFrame.rgba();
 
         Mat tmp = gray.clone();
         Imgproc.Canny(gray, tmp, 80, 100);
-        // Imgproc.cvtColor(tmp, col, Imgproc.COLOR_GRAY2RGBA, 4);
 
         MatOfRect faces = new MatOfRect();
+        // we use canny-processed image as input for the classification
         faceClassifier.detectMultiScale(gray, faces, 1.3);
         for(Rect face : faces.toArray()) {
+            // eliminate small faces to reduce false positives
             if(face.width < 20) {
                 continue;
             }
-            /*Imgproc.rectangle(col, new Point(face.x, face.y),
-                    new Point(face.x + face.width, face.y + face.height),
-                    new Scalar(255, 0, 0), 5);*/
             Point nosePosition = new Point(face.x + face.width * 0.5, face.y + face.height * 0.5);
             int noseSize = (int) (face.width * 0.1);
             Imgproc.circle(col, nosePosition, noseSize, new Scalar(255, 0, 0), Imgproc.FILLED);
